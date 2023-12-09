@@ -106,12 +106,12 @@ namespace DotNet.Testcontainers.Clients
 
       if (default(DateTime).Equals(since))
       {
-        since = DateTime.MinValue;
+        since = unixEpoch;
       }
 
       if (default(DateTime).Equals(until))
       {
-        until = DateTime.MaxValue;
+        until = unixEpoch;
       }
 
       return Container.GetLogsAsync(id, since.ToUniversalTime().Subtract(unixEpoch), until.ToUniversalTime().Subtract(unixEpoch), timestampsEnabled, ct);
@@ -193,7 +193,7 @@ namespace DotNet.Testcontainers.Clients
         return;
       }
 
-      using (var tarOutputMemStream = new TarOutputMemoryStream())
+      using (var tarOutputMemStream = new TarOutputMemoryStream(_logger))
       {
         await tarOutputMemStream.AddAsync(resourceMapping, ct)
           .ConfigureAwait(false);
@@ -209,7 +209,7 @@ namespace DotNet.Testcontainers.Clients
     /// <inheritdoc />
     public async Task CopyAsync(string id, DirectoryInfo source, string target, UnixFileModes fileMode, CancellationToken ct = default)
     {
-      using (var tarOutputMemStream = new TarOutputMemoryStream(target))
+      using (var tarOutputMemStream = new TarOutputMemoryStream(target, _logger))
       {
         await tarOutputMemStream.AddAsync(source, true, fileMode, ct)
           .ConfigureAwait(false);
@@ -225,7 +225,7 @@ namespace DotNet.Testcontainers.Clients
     /// <inheritdoc />
     public async Task CopyAsync(string id, FileInfo source, string target, UnixFileModes fileMode, CancellationToken ct = default)
     {
-      using (var tarOutputMemStream = new TarOutputMemoryStream(target))
+      using (var tarOutputMemStream = new TarOutputMemoryStream(target, _logger))
       {
         await tarOutputMemStream.AddAsync(source, fileMode, ct)
           .ConfigureAwait(false);
@@ -313,7 +313,7 @@ namespace DotNet.Testcontainers.Clients
 
       if (configuration.ResourceMappings.Any())
       {
-        await Task.WhenAll(configuration.ResourceMappings.Values.Select(resourceMapping => CopyAsync(id, resourceMapping, ct)))
+        await Task.WhenAll(configuration.ResourceMappings.Select(resourceMapping => CopyAsync(id, resourceMapping, ct)))
           .ConfigureAwait(false);
       }
 
@@ -330,7 +330,18 @@ namespace DotNet.Testcontainers.Clients
       {
         var dockerfileArchive = new DockerfileArchive(configuration.DockerfileDirectory, configuration.Dockerfile, configuration.Image, _logger);
 
-        await Task.WhenAll(dockerfileArchive.GetBaseImages().Select(image => PullImageAsync(image, ct)))
+        var baseImages = dockerfileArchive.GetBaseImages().ToArray();
+
+        var filters = baseImages.Aggregate(new FilterByProperty(), (dictionary, baseImage) => dictionary.Add("reference", baseImage.FullName));
+
+        var cachedImages = await Image.GetAllAsync(filters, ct)
+          .ConfigureAwait(false);
+
+        var repositoryTags = new HashSet<string>(cachedImages.SelectMany(image => image.RepoTags));
+
+        var uncachedImages = baseImages.Where(baseImage => !repositoryTags.Contains(baseImage.FullName));
+
+        await Task.WhenAll(uncachedImages.Select(image => PullImageAsync(image, ct)))
           .ConfigureAwait(false);
 
         _ = await Image.BuildAsync(configuration, dockerfileArchive, ct)

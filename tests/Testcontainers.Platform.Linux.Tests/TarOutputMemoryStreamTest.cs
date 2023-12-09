@@ -4,7 +4,7 @@ public abstract class TarOutputMemoryStreamTest
 {
     private const string TargetDirectoryPath = "/tmp";
 
-    private readonly TarOutputMemoryStream _tarOutputMemoryStream = new TarOutputMemoryStream(TargetDirectoryPath);
+    private readonly TarOutputMemoryStream _tarOutputMemoryStream = new TarOutputMemoryStream(TargetDirectoryPath, NullLogger.Instance);
 
     private readonly FileInfo _testFile = new FileInfo(Path.Combine(TestSession.TempDirectoryPath, Path.GetRandomFileName()));
 
@@ -18,7 +18,7 @@ public abstract class TarOutputMemoryStreamTest
     public void TestFileExistsInTarFile()
     {
         // Given
-        IList<string> actual = new List<string>();
+        var actual = new List<string>();
 
         _tarOutputMemoryStream.Close();
         _tarOutputMemoryStream.Seek(0, SeekOrigin.Begin);
@@ -97,7 +97,7 @@ public abstract class TarOutputMemoryStreamTest
 
             var targetDirectoryPath4 = string.Join("/", string.Empty, "tmp", Guid.NewGuid());
 
-            IList<string> targetFilePaths = new List<string>();
+            var targetFilePaths = new List<string>();
             targetFilePaths.Add(targetFilePath1);
             targetFilePaths.Add(targetFilePath2);
             targetFilePaths.Add(string.Join("/", targetDirectoryPath1, _testFile.Name));
